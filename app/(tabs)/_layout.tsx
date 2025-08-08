@@ -1,38 +1,37 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
 import React from 'react';
-import { Platform } from 'react-native';
 import { HapticTab } from '../../components/HapticTab';
-import TabBarBackground from '../../components/ui/TabBarBackground';
 import { Colors } from '../../constants/Colors';
-import { useColorScheme } from '../../hooks/useColorScheme';
+
+// 防護機制，確保 Colors.light 存在，並添加詳細日誌
+const AppColors = Colors.light || {
+  background: '#F5F7FA',
+  tint: '#4A90E2',
+  text: '#333333',
+  cardBackground: '#FFFFFF',
+  error: '#E85D75',
+  secondaryText: '#666666',
+};
+console.log('Colors loaded:', Colors);
+console.log('safeColors:', AppColors); // 檢查所有屬性
 
 export default function TabLayout() {
-  const colorScheme = useColorScheme();
-
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
+        tabBarActiveTintColor: AppColors.tint,
         headerShown: false,
         tabBarButton: HapticTab,
-        tabBarBackground: TabBarBackground,
-        tabBarStyle: Platform.select({
-          ios: {
-            position: 'absolute',
-            borderTopWidth: 0,
-            elevation: 0,
-          },
-          android: {
-            elevation: 8,
-          },
-        }),
+        tabBarStyle: {
+          backgroundColor: AppColors.background,
+        },
         lazy: true,
         detachInactiveScreens: true,
         unmountOnBlur: false,
       }}
       sceneContainerStyle={{
-        backgroundColor: Colors[colorScheme ?? 'light'].background,
+        backgroundColor: AppColors.background,
       }}
     >
       <Tabs.Screen

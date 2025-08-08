@@ -10,24 +10,31 @@ export default function StartScreen() {
   const colorScheme = useColorScheme();
 
   useEffect(() => {
+    
     const timer = setTimeout(() => {
-      router.replace('/(tabs)/index');
+      if (animationRef.current) {
+        console.log('Timeout triggered, navigating to /(tabs)/index');
+        router.replace('/(tabs)');
+      }
     }, 2000);
 
+    // 清理定時器
     return () => clearTimeout(timer);
   }, []);
 
   return (
     <ThemedView style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: Colors[colorScheme ?? 'light'].background }}>
       <LottieView
-        ref={animationRef}
-        source={require('../assets/animations/Task Done.json')}
-        autoPlay
-        loop={false}
-        style={{ width: 300, height: 300 }}
-        accessibilityLabel="啟動動畫"
-        onAnimationFinish={() => router.replace('/(tabs)/index')}
-        onError={(error) => console.error('啟動動畫錯誤:', error)}
+      ref={animationRef}
+      source={require('../assets/animations/Task Done.json')}
+      autoPlay
+      loop={false}
+      style={{ width: 350, height: 350, backgroundColor: '#000000' }}
+      onAnimationFinish={() => {
+        console.log('Animation finished, navigating to /(tabs)/index');
+        router.replace('/(tabs)');
+      }}
+      onError={(error: unknown) => console.error('啟動動畫錯誤:', error)}
       />
     </ThemedView>
   );

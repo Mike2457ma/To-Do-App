@@ -1,60 +1,95 @@
+// todos.ts
 import axios from 'axios';
 
 const API_BASE = 'https://dummyjson.com/todos';
 
-type Todo = {
-  id: number;
+export type Todo = {
+  id: string;
   todo: string;
   completed: boolean;
-  dueDate: Date; // 統一為 Date 類型
+  dueDate: Date;
   userId?: number;
 };
 
 export const fetchTodos = async (): Promise<Todo[]> => {
-  console.log('正在獲取待辦事項...');
+  console.log('Fetching todos...');
   try {
     const { data } = await axios.get(`${API_BASE}`);
-    console.log('待辦事項數據:', data.todos);
+    console.log('Todos data:', data.todos);
+    
+    // Add due dates to todos (since dummyjson doesn't provide them)
     return data.todos.map((todo: any, index: number) => {
-      const daysToAdd = Math.floor(index / 3);
-      const dueDate = new Date(); // 保留當前時間
-      dueDate.setDate(dueDate.getDate() + daysToAdd);
+      const dueDate = new Date();
+      dueDate.setDate(dueDate.getDate() + Math.floor(index / 3));
       return {
         ...todo,
+        id: todo.id.toString(),
         dueDate: dueDate,
       };
     });
   } catch (error) {
-    console.error('獲取待辦事項失敗:', error);
+    console.error('Failed to fetch todos:', error);
     throw error;
   }
 };
 
-export const addTodo = async (text: string, dueDate: Date): Promise<Todo> => {
-  console.log('正在添加待辦事項:', { text, dueDate });
+export const addTodo = async (todoData: Omit<Todo, 'id' | 'completed'>): Promise<Todo> => {
+  console.log('Adding todo:', todoData);
   try {
-    const dueDateStr = dueDate.toISOString(); // 將 Date 轉為 ISO 字符串
-    const { data } = await axios.post(`${API_BASE}/add`, {
-      todo: text,
+    const payload = {
+      todo: todoData.todo,
       completed: false,
       userId: 1,
-      dueDate: dueDateStr, // 嘗試傳遞 dueDate
-    });
-    console.log('添加待辦事項成功:', data);
-    return { ...data, dueDate: new Date(dueDateStr) }; // 返回 Date 物件
-  } catch (error) {
-    console.error('添加待辦事項失敗:', error);
-    return {
-      id: Math.floor(Math.random() * 10000),
-      todo: text,
-      completed: false,
-      userId: 1,
-      dueDate: dueDate, // 失敗時使用傳入的 Date
+      dueDate: todoData.dueDate.toISOString(),
     };
+
+    const { data } = await axios.post(`${API_BASE}/add`, payload);
+    console.log('Todo added successfully:', data);
+    
+    return {
+      ...data,
+      id: data.id.toString(),
+      dueDate: new Date(todoData.dueDate),
+    };
+  } catch (error) {
+    console.error('Failed to add todo:', error);
+    
+    // Fallback for offline mode with unique ID
+    const uniqueId = `local-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    return {
+      id: uniqueId,
+      todo: todoData.todo,
+      completed: false,
+      userId: 1,
+      dueDate: new Date(todoData.dueDate),
+    };
+  }
+};
+
+export const deleteTodo = async (id: string): Promise<void> => {
+  console.log(`Deleting todo with id: ${id}`);
+  // Skip API call for local todos
+  if (id.startsWith('local-')) {
+    console.log(`Todo ${id} is local, skipping API call`);
+    return;
+  }
+
+  try {
+    await axios.delete(`${API_BASE}/${id}`);
+    console.log(`Todo ${id} deleted successfully`);
+  } catch (error) {
+    console.error(`Failed to delete todo ${id}:`, error);
+    // If 404, assume todo doesn't exist in backend and allow local removal
+    if (axios.isAxiosError(error) && error.response?.status === 404) {
+      console.log(`Todo ${id} not found in backend, allowing local deletion`);
+      return;
+    }
+    throw error;
   }
 };
 
 export default {
   fetchTodos,
   addTodo,
+  deleteTodo,
 };

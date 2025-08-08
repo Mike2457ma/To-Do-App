@@ -34,14 +34,17 @@
           "resizeMode": "contain",
           "backgroundColor": "#ffffff"
         }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/icon.png",
+          "color": "#ffffff"
+        }
       ]
     ],
     "experiments": {
       "typedRoutes": true
-    },
-    "notifications": {
-      "icon": "./assets/icon.png",
-      "color": "#ffffff"
     },
     "extra": {
       "router": {},
