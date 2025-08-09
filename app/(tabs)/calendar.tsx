@@ -33,60 +33,61 @@ const styles = {
     shadowRadius: 4,
     backgroundColor: '#1E1E1E',
   },
-  dotColor: '#4A90E2',
-  selectedDayBackgroundColor: '#4A90E2',
+  dotColor: '#E85D75',
+  selectedDayBackgroundColor: '#E85D75',
   selectedDayTextColor: '#FFFFFF',
-  todayTextColor: '#4A90E2',
+  todayTextColor: '#E85D75',
   dayTextColor: '#FFFFFF',
   textDisabledColor: '#666666',
-  arrowColor: '#4A90E2',
+  arrowColor: '#E85D75',
   monthTextColor: '#FFFFFF',
-  indicatorColor: '#4A90E2',
+  indicatorColor: '#E85D75',
   textSectionTitleColor: '#CCCCCC',
 };
 
 const calendarTheme = {
   calendarBackground: '#1E1E1E',
   textSectionTitleColor: '#CCCCCC',
-  selectedDayBackgroundColor: '#4A90E2',
+  selectedDayBackgroundColor: '#E85D75',
   selectedDayTextColor: '#FFFFFF',
-  todayTextColor: '#4A90E2',
+  todayTextColor: '#E85D75',
   dayTextColor: '#FFFFFF',
   textDisabledColor: '#666666',
-  arrowColor: '#4A90E2',
+  arrowColor: '#E85D75',
   monthTextColor: '#FFFFFF',
-  indicatorColor: '#4A90E2',
+  indicatorColor: '#E85D75',
 };
 
 export default function CalendarScreen() {
-  const { data: todos = [], isLoading } = useQuery({ queryKey: ['todos'], queryFn: fetchTodos });
-  const [markedDates, setMarkedDates] = useState({});
+  // 載入任務資料
+  const { data: tasks = [], isLoading } = useQuery({ queryKey: ['tasks'], queryFn: fetchTodos });
+  const [dateMarks, setDateMarks] = useState({});
 
+  // 更新日曆標記
   useEffect(() => {
     const marks = {};
-    todos.forEach((todo) => {
-      if (!todo.dueDate) {
-        console.warn('Todo without dueDate found, skipping:', todo);
-        return;
+    for (let i = 0; i < tasks.length; i++) {
+      const task = tasks[i];
+      if (!task.dueDate) {
+        continue;
       }
-      const dateStr = new Date(todo.dueDate).toISOString().split('T')[0];
+      const dateStr = new Date(task.dueDate).toISOString().split('T')[0];
       marks[dateStr] = {
         marked: true,
-        dotColor: '#4A90E2',
+        dotColor: '#E85D75',
         activeOpacity: 0.7,
       };
-    });
-    setMarkedDates(marks);
-  }, [todos]);
+    }
+    setDateMarks(marks);
+  }, [tasks]);
 
+  // 顯示載入動畫
   if (isLoading) {
     return (
       <ImageBackground
-        source={require('../../assets/images/background.jpg')} // 修正為從 (tabs) 文件夾的相對路徑
+        source={require('../../assets/images/background.jpg')}
         style={{ flex: 1 }}
         resizeMode="cover"
-        onError={(e) => console.log('Image load error in CalendarScreen:', e.nativeEvent.error)}
-        onLoad={() => console.log('Image loaded successfully in CalendarScreen')}
       >
         <ThemedView style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
           <LottieView
@@ -94,35 +95,38 @@ export default function CalendarScreen() {
             autoPlay
             loop
             style={{ width: 150, height: 150 }}
-            accessibilityLabel="日曆加載動畫"
+            accessibilityLabel="日曆載入動畫"
           />
         </ThemedView>
       </ImageBackground>
     );
   }
 
+  // 渲染日曆畫面
   return (
-    <SafeAreaView style={{ flex: 1 }}>
+    <SafeAreaView style={styles.safeArea}>
       <ImageBackground
-        source={require('../../assets/images/background.jpg')} // 修正為從 (tabs) 文件夾的相對路徑
+        source={require('../../assets/images/background.jpg')}
         style={{ flex: 1 }}
         resizeMode="cover"
-        onError={(e) => console.log('Image load error in CalendarScreen:', e.nativeEvent.error)}
-        onLoad={() => console.log('Image loaded successfully in CalendarScreen')}
       >
         <ThemedView style={styles.container}>
           <ThemedText type="title" style={styles.title}>日曆</ThemedText>
           <Calendar
-            markedDates={markedDates}
+            markedDates={dateMarks}
             onDayPress={(day) => {
-              const dateTodos = todos.filter((todo) => {
-                if (!todo.dueDate) return false;
-                return new Date(todo.dueDate).toISOString().split('T')[0] === day.dateString;
-              });
-              if (dateTodos.length > 0) {
+              const dateTasks = [];
+              for (let i = 0; i < tasks.length; i++) {
+                const task = tasks[i];
+                if (!task.dueDate) continue;
+                if (new Date(task.dueDate).toISOString().split('T')[0] === day.dateString) {
+                  dateTasks.push(task);
+                }
+              }
+              if (dateTasks.length > 0) {
                 Alert.alert(
                   `${day.dateString} 的任務`,
-                  dateTodos.map((t) => `• ${t.todo}`).join('\n'),
+                  dateTasks.map((t) => `• ${t.todo}`).join('\n'),
                   [{ text: '確定', style: 'default' }],
                 );
               }

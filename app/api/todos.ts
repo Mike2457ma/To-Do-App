@@ -17,7 +17,7 @@ export const fetchTodos = async (): Promise<Todo[]> => {
     const { data } = await axios.get(`${API_BASE}`);
     console.log('Todos data:', data.todos);
     
-    // Add due dates to todos (since dummyjson doesn't provide them)
+    // add dueDate for each todo
     return data.todos.map((todo: any, index: number) => {
       const dueDate = new Date();
       dueDate.setDate(dueDate.getDate() + Math.floor(index / 3));
@@ -54,7 +54,7 @@ export const addTodo = async (todoData: Omit<Todo, 'id' | 'completed'>): Promise
   } catch (error) {
     console.error('Failed to add todo:', error);
     
-    // Fallback for offline mode with unique ID
+    // offline mode 
     const uniqueId = `local-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
     return {
       id: uniqueId,
@@ -68,7 +68,7 @@ export const addTodo = async (todoData: Omit<Todo, 'id' | 'completed'>): Promise
 
 export const deleteTodo = async (id: string): Promise<void> => {
   console.log(`Deleting todo with id: ${id}`);
-  // Skip API call for local todos
+  // Skip  for local todos
   if (id.startsWith('local-')) {
     console.log(`Todo ${id} is local, skipping API call`);
     return;
@@ -79,7 +79,7 @@ export const deleteTodo = async (id: string): Promise<void> => {
     console.log(`Todo ${id} deleted successfully`);
   } catch (error) {
     console.error(`Failed to delete todo ${id}:`, error);
-    // If 404, assume todo doesn't exist in backend and allow local removal
+    // 404 error handling
     if (axios.isAxiosError(error) && error.response?.status === 404) {
       console.log(`Todo ${id} not found in backend, allowing local deletion`);
       return;

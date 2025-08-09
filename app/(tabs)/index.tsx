@@ -26,6 +26,7 @@ interface Section {
   data: Todo[];
 }
 
+// 設置通知處理器
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowBanner: true,
@@ -36,25 +37,27 @@ Notifications.setNotificationHandler({
 
 export default function HomeScreen() {
   const queryClient = useQueryClient();
-  const { data: apiTodos, isLoading, error } = useQuery({ queryKey: ['todos'], queryFn: fetchTodos });
+  // 載入任務資料
+  const { data: todos, isLoading, error } = useQuery({ queryKey: ['todos'], queryFn: fetchTodos });
   const colorScheme = useColorScheme();
 
-  const [expandedSections, setExpandedSections] = useState({ 今天: true, 未來: false, 已完成: true });
-  const [isAddModalVisible, setAddModalVisible] = useState(false);
-  const [newTodoText, setNewTodoText] = useState('');
-  const [newDueDate, setNewDueDate] = useState(new Date());
-  const [editTodoText, setEditTodoText] = useState('');
-  const [editDueDate, setEditDueDate] = useState(new Date());
-  const [errorMessage, setErrorMessage] = useState('');
-  const [successMessage, setSuccessMessage] = useState('');
-  const [localTodos, setLocalTodos] = useState<Todo[]>([]);
-  const [isEditing, setIsEditing] = useState<{ [key: number]: boolean }>({});
-  const [notificationEnabled, setNotificationEnabled] = useState(false);
+  const [sectionsOpen, setSectionsOpen] = useState({ 今天: true, 未來: false, 已完成: true });
+  const [addModal, setAddModal] = useState(false);
+  const [todoText, setTodoText] = useState('');
+  const [dueDate, setDueDate] = useState(new Date());
+  const [editText, setEditText] = useState('');
+  const [editDate, setEditDate] = useState(new Date());
+  const [errorMsg, setErrorMsg] = useState('');
+  const [successMsg, setSuccessMsg] = useState('');
+  const [tasks, setTasks] = useState<Todo[]>([]);
+  const [editing, setEditing] = useState<{ [key: number]: boolean }>({});
+  const [notifyOn, setNotifyOn] = useState(false);
 
+  // 初始化通知設置
   useEffect(() => {
-    const setupNotifications = async () => {
+    const setupNotify = async () => {
       if (!Device.isDevice) {
-        alert('這設備沒法進行通知！');
+        alert('設備不支援通知！');
         return;
       }
       if (Platform.OS === 'android') {
@@ -65,193 +68,200 @@ export default function HomeScreen() {
             vibrationPattern: [0, 250, 250, 250],
             lightColor: '#FF231F7C',
           });
-          console.log('Notification channel created successfully');
-        } catch (error) {
-          console.error('Failed to create notification channel:', error);
+        } catch (err) {
+          console.error('設置通知通道失敗:', err);
         }
       }
       const { status } = await Notifications.requestPermissionsAsync();
       if (status === 'granted') {
-        setNotificationEnabled(true);
-        console.log('Notification permissions granted');
+        setNotifyOn(true);
       } else {
         alert('通知權限被拒絕！請手動啟用。');
-        setNotificationEnabled(false);
-        Linking.openSettings(); // 引導用戶到設置頁面
+        setNotifyOn(false);
+        Linking.openSettings();
       }
     };
-    setupNotifications();
+    setupNotify();
   }, []);
 
-  const normalizeDate = (dueDate: Date | string): Date => {
-    return dueDate instanceof Date && !isNaN(dueDate.getTime()) ? dueDate : new Date(dueDate);
+  // 標準化日期格式
+  const normalizeDate = (date: Date | string): Date => {
+    return date instanceof Date && !isNaN(date.getTime()) ? date : new Date(date);
   };
 
-  const scheduleNotification = async (todo: Todo) => {
-    if (!notificationEnabled) return;
+  // 安排任務通知
+  const scheduleNotify = async (todo: Todo) => {
+    if (!notifyOn) return;
     try {
-      const triggerDate = new Date(normalizeDate(todo.dueDate));
-      triggerDate.setHours(triggerDate.getHours() - 1); // 提前一小時
-      if (triggerDate < new Date()) {
-        console.log('Trigger date is in the past, skipping notification:', triggerDate.toISOString());
-        return;
-      }
-      console.log('Scheduling notification for:', triggerDate.toISOString());
+      const trigger = new Date(normalizeDate(todo.dueDate));
+      trigger.setHours(trigger.getHours() - 1);
+      if (trigger < new Date()) return;
       await Notifications.scheduleNotificationAsync({
         content: {
           title: '待辦事項提醒',
-          body: `${todo.todo} 快到期！`,
+          body: `${todo.todo} 即將到期！`,
           data: { todoId: todo.id.toString() },
         },
-        trigger: { date: triggerDate },
+        trigger: { date: trigger },
       });
-      console.log('Notification scheduled successfully');
-    } catch (error) {
-      console.error('Failed to schedule notification:', error);
+    } catch (err) {
+      console.error('安排通知失敗:', err);
     }
   };
 
-  const mutation = useMutation({
-    mutationFn: (newTodo: { todo: string; dueDate: Date }) => addTodo(newTodo),
+  // 添加任務
+  const addMutation = useMutation({
+    mutationFn: (newTask: { todo: string; dueDate: Date }) => addTodo(newTask),
     onSuccess: (data) => {
-      const todoWithDate = { ...data, dueDate: normalizeDate(data.dueDate) };
-      setLocalTodos((prev) => {
-        const uniqueTodos = [...prev, todoWithDate].filter((todo, index, self) =>
-          index === self.findIndex((t) => t.id === todo.id)
+      const task = { ...data, dueDate: normalizeDate(data.dueDate) };
+      setTasks((prev) => {
+        const uniqueTasks = [...prev, task].filter((t, idx, self) =>
+          idx === self.findIndex((x) => x.id === t.id)
         ).sort((a, b) => normalizeDate(a.dueDate).getTime() - normalizeDate(b.dueDate).getTime());
-        return uniqueTodos;
+        return uniqueTasks;
       });
       queryClient.invalidateQueries({ queryKey: ['todos'] });
-      scheduleNotification(todoWithDate);
-      setSuccessMessage('添加成功！');
+      scheduleNotify(task);
+      setSuccessMsg('任務添加成功！');
       setTimeout(() => {
-        setAddModalVisible(false);
-        setNewTodoText('');
-        setNewDueDate(new Date());
-        setSuccessMessage('');
+        setAddModal(false);
+        setTodoText('');
+        setDueDate(new Date());
+        setSuccessMsg('');
       }, 1000);
     },
-    onError: (error) => {
-      console.error('添加待辦事項失敗:', error);
-      setErrorMessage(`添加待辦事項失敗: ${error.message}`);
+    onError: (err) => {
+      setErrorMsg(`添加任務失敗: ${err.message}`);
     },
   });
 
+  // 更新任務
   const updateMutation = useMutation({
-    mutationFn: (updatedTodo: { id: number; text: string; dueDate: Date }) =>
-      new Promise((resolve) => setTimeout(() => resolve(updatedTodo), 500)),
+    mutationFn: (task: { id: number; text: string; dueDate: Date }) =>
+      new Promise((resolve) => setTimeout(() => resolve(task), 500)),
     onSuccess: (data) => {
-      const todoWithDate = { id: data.id, todo: data.text, dueDate: normalizeDate(data.dueDate), completed: false };
-      setLocalTodos((prev) => {
-        const uniqueTodos = prev.map((todo) => (todo.id === data.id ? todoWithDate : todo)).filter((todo, index, self) =>
-          index === self.findIndex((t) => t.id === todo.id)
+      const task = { id: data.id, todo: data.text, dueDate: normalizeDate(data.dueDate), completed: false };
+      setTasks((prev) => {
+        const uniqueTasks = prev.map((t) => (t.id === data.id ? task : t)).filter((t, idx, self) =>
+          idx === self.findIndex((x) => x.id === t.id)
         ).sort((a, b) => normalizeDate(a.dueDate).getTime() - normalizeDate(b.dueDate).getTime());
-        return uniqueTodos;
+        return uniqueTasks;
       });
-      queryClient.setQueryData(['todos'], (oldData: Todo[] | undefined) =>
-        oldData?.map((todo) => (todo.id === data.id ? todoWithDate : todo))
+      queryClient.setQueryData(['todos'], (old: Todo[] | undefined) =>
+        old?.map((t) => (t.id === data.id ? task : t))
       );
-      scheduleNotification(todoWithDate);
-      setIsEditing((prev) => ({ ...prev, [data.id]: false }));
-      setSuccessMessage('更新成功！');
-      setTimeout(() => setSuccessMessage(''), 1000);
+      scheduleNotify(task);
+      setEditing((prev) => ({ ...prev, [data.id]: false }));
+      setSuccessMsg('任務更新成功！');
+      setTimeout(() => setSuccessMsg(''), 1000);
     },
-    onError: (error) => setErrorMessage(`更新失敗: ${error.message}`),
+    onError: (err) => setErrorMsg(`更新任務失敗: ${err.message}`),
   });
 
+  // 刪除任務
   const deleteMutation = useMutation({
     mutationFn: (id: number) => new Promise((resolve) => setTimeout(() => resolve(id), 500)),
     onSuccess: (id) => {
-      setLocalTodos((prev) => prev.filter((todo) => todo.id !== id));
-      queryClient.setQueryData(['todos'], (oldData: Todo[] | undefined) => oldData?.filter((todo) => todo.id !== id));
+      setTasks((prev) => prev.filter((t) => t.id !== id));
+      queryClient.setQueryData(['todos'], (old: Todo[] | undefined) => old?.filter((t) => t.id !== id));
       Notifications.cancelScheduledNotificationAsync(id.toString());
-      setSuccessMessage('刪除成功！');
-      setTimeout(() => setSuccessMessage(''), 1000);
+      setSuccessMsg('任務刪除成功！');
+      setTimeout(() => setSuccessMsg(''), 1000);
     },
-    onError: (error) => setErrorMessage(`刪除失敗: ${error.message}`),
+    onError: (err) => setErrorMsg(`刪除任務失敗: ${err.message}`),
   });
 
+  // 切換任務完成狀態
   const toggleCompleteMutation = useMutation({
     mutationFn: ({ id, completed }: { id: number; completed: boolean }) =>
       new Promise((resolve) => setTimeout(() => resolve({ id, completed }), 500)),
     onSuccess: (data) => {
-      setLocalTodos((prev) => prev.map((todo) => (todo.id === data.id ? { ...todo, completed: data.completed } : todo)));
-      queryClient.setQueryData(['todos'], (oldData: Todo[] | undefined) =>
-        oldData?.map((todo) => (todo.id === data.id ? { ...todo, completed: data.completed } : todo))
+      setTasks((prev) => prev.map((t) => (t.id === data.id ? { ...t, completed: data.completed } : t)));
+      queryClient.setQueryData(['todos'], (old: Todo[] | undefined) =>
+        old?.map((t) => (t.id === data.id ? { ...t, completed: data.completed } : t))
       );
       if (data.completed) Notifications.cancelScheduledNotificationAsync(data.id.toString());
-      setSuccessMessage('狀態更新成功！');
-      setTimeout(() => setSuccessMessage(''), 1000);
+      setSuccessMsg('任務狀態更新成功！');
+      setTimeout(() => setSuccessMsg(''), 1000);
     },
-    onError: (error) => setErrorMessage(`更新狀態失敗: ${error.message}`),
+    onError: (err) => setErrorMsg(`更新任務狀態失敗: ${err.message}`),
   });
 
+  // 清理已完成任務
   const clearCompletedMutation = useMutation({
     mutationFn: () => new Promise((resolve) => setTimeout(() => resolve(null), 500)),
     onSuccess: () => {
-      const completedIds = localTodos.filter((todo) => todo.completed).map((todo) => todo.id.toString());
-      setLocalTodos((prev) => prev.filter((todo) => !todo.completed));
-      queryClient.setQueryData(['todos'], (oldData: Todo[] | undefined) => oldData?.filter((todo) => !todo.completed));
-      completedIds.forEach((id) => Notifications.cancelScheduledNotificationAsync(id));
-      setSuccessMessage('清理成功！');
-      setTimeout(() => setSuccessMessage(''), 1000);
+      const completedIds = tasks.filter((t) => t.completed).map((t) => t.id.toString());
+      setTasks((prev) => prev.filter((t) => !t.completed));
+      queryClient.setQueryData(['todos'], (old: Todo[] | undefined) => old?.filter((t) => !t.completed));
+      for (let i = 0; i < completedIds.length; i++) {
+        Notifications.cancelScheduledNotificationAsync(completedIds[i]);
+      }
+      setSuccessMsg('已完成任務清理成功！');
+      setTimeout(() => setSuccessMsg(''), 1000);
     },
-    onError: (error) => setErrorMessage(`清理失敗: ${error.message}`),
+    onError: (err) => setErrorMsg(`清理任務失敗: ${err.message}`),
   });
 
-  const handleAddTodo = () => {
-    if (!newTodoText.trim()) {
-      setErrorMessage('請輸入內容！');
+  // 處理添加任務
+  const handleAdd = () => {
+    if (!todoText.trim()) {
+      setErrorMsg('請輸入任務內容！');
       return;
     }
-    if (!newDueDate || isNaN(newDueDate.getTime())) {
-      setErrorMessage('無效日期！');
+    if (!dueDate || isNaN(dueDate.getTime())) {
+      setErrorMsg('請選擇有效日期！');
       return;
     }
-    setErrorMessage('');
-    mutation.mutate({ todo: newTodoText, dueDate: newDueDate });
+    setErrorMsg('');
+    addMutation.mutate({ todo: todoText, dueDate });
   };
 
-  const handleUpdateTodo = (id: number) => {
-    if (!editTodoText.trim()) {
-      setErrorMessage('請輸入內容！');
+  // 處理更新任務
+  const handleUpdate = (id: number) => {
+    if (!editText.trim()) {
+      setErrorMsg('請輸入任務內容！');
       return;
     }
-    if (!editDueDate || isNaN(editDueDate.getTime())) {
-      setErrorMessage('無效日期！');
+    if (!editDate || isNaN(editDate.getTime())) {
+      setErrorMsg('請選擇有效日期！');
       return;
     }
-    updateMutation.mutate({ id, text: editTodoText, dueDate: editDueDate });
+    updateMutation.mutate({ id, text: editText, dueDate: editDate });
   };
 
-  const handleDeleteTodo = (id: number) => deleteMutation.mutate(id);
-  const handleToggleComplete = (id: number, completed: boolean) => toggleCompleteMutation.mutate({ id, completed });
-  const handleClearCompleted = () =>
+  // 處理刪除任務
+  const handleDelete = (id: number) => deleteMutation.mutate(id);
+
+  // 處理任務完成狀態
+  const handleToggle = (id: number, completed: boolean) => toggleCompleteMutation.mutate({ id, completed });
+
+  // 處理清理已完成任務
+  const handleClear = () =>
     Alert.alert('確認', '刪除所有已完成任務？', [
       { text: '取消' },
       { text: '確認', style: 'destructive', onPress: () => clearCompletedMutation.mutate() },
     ]);
 
-  const showDatePicker = (setDate: (date: Date) => void, currentDate: Date) => {
+  // 顯示日期選擇器
+  const showDatePicker = (setDate: (date: Date) => void, current: Date) => {
     if (Platform.OS === 'android') {
-      // 先選擇日期
       DateTimePickerAndroid.open({
-        value: currentDate,
+        value: current,
         mode: 'date',
         display: 'default',
-        onChange: (event, selectedDate?: Date) => {
-          if (event.type === 'set' && selectedDate) {
-            const updatedDate = new Date(currentDate); // 保留原始時間
-            updatedDate.setFullYear(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate());
-            // 然後選擇時間
+        onChange: (event, selected?: Date) => {
+          if (event.type === 'set' && selected) {
+            const updated = new Date(current);
+            updated.setFullYear(selected.getFullYear(), selected.getMonth(), selected.getDate());
             DateTimePickerAndroid.open({
-              value: updatedDate,
+              value: updated,
               mode: 'time',
               display: 'default',
               onChange: (eventTime, selectedTime?: Date) => {
                 if (eventTime.type === 'set' && selectedTime) {
-                  updatedDate.setHours(selectedTime.getHours(), selectedTime.getMinutes(), 0, 0);
-                  setDate(updatedDate);
+                  updated.setHours(selectedTime.getHours(), selectedTime.getMinutes(), 0, 0);
+                  setDate(updated);
                 }
               },
             });
@@ -259,73 +269,75 @@ export default function HomeScreen() {
         },
       });
     } else {
-      // iOS 使用模態 DateTimePicker
       DateTimePickerAndroid.open({
-        value: currentDate,
+        value: current,
         mode: 'datetime',
         display: 'default',
-        onChange: (event, selectedDate?: Date) => {
-          if (event.type === 'set' && selectedDate) {
-            setDate(selectedDate);
+        onChange: (event, selected?: Date) => {
+          if (event.type === 'set' && selected) {
+            setDate(selected);
           }
         },
       });
     }
   };
 
-  const todos = React.useMemo(() => {
-    const normalizedTodos = [...(apiTodos || []), ...localTodos].map(todo => ({
-      ...todo,
-      dueDate: normalizeDate(todo.dueDate),
-    })).filter((todo, index, self) =>
-      index === self.findIndex((t) => t.id === todo.id)
-    );
-    return normalizedTodos.sort((a, b) => normalizeDate(a.dueDate).getTime() - normalizeDate(b.dueDate).getTime());
-  }, [apiTodos, localTodos]);
+  // 計算任務列表
+  const taskList = React.useMemo(() => {
+    const normalized = [...(todos || []), ...tasks].map(t => ({
+      ...t,
+      dueDate: normalizeDate(t.dueDate),
+    })).filter((t, idx, self) => idx === self.findIndex((x) => x.id === t.id));
+    return normalized.sort((a, b) => normalizeDate(a.dueDate).getTime() - normalizeDate(b.dueDate).getTime());
+  }, [todos, tasks]);
 
+  // 計算任務分組
   const sections = React.useMemo(() => {
     const today = new Date();
-    today.setHours(0, 0, 0, 0); // 只比較日期部分
+    today.setHours(0, 0, 0, 0);
     return [
-      { title: '今天', data: todos.filter((todo) => !todo.completed && normalizeDate(todo.dueDate).toDateString() === today.toDateString()) },
-      { title: '未來', data: todos.filter((todo) => !todo.completed && normalizeDate(todo.dueDate).toDateString() > today.toDateString()) },
-      { title: '已完成', data: todos.filter((todo) => todo.completed) },
+      { title: '今天', data: taskList.filter((t) => !t.completed && normalizeDate(t.dueDate).toDateString() === today.toDateString()) },
+      { title: '未來', data: taskList.filter((t) => !t.completed && normalizeDate(t.dueDate).toDateString() > today.toDateString()) },
+      { title: '已完成', data: taskList.filter((t) => t.completed) },
     ];
-  }, [todos]);
+  }, [taskList]);
 
-  const toggleSection = (title: string) => setExpandedSections((prev) => ({ ...prev, [title]: !prev[title] }));
-  const renderItem = ({ item }: { item: Section }) => (
+  // 切換分組展開狀態
+  const toggleSection = (title: string) => setSectionsOpen((prev) => ({ ...prev, [title]: !prev[title] }));
+
+  // 渲染分組
+  const renderSection = ({ item }: { item: Section }) => (
     <View>
       <TouchableOpacity style={styles.sectionHeader} onPress={() => toggleSection(item.title)} activeOpacity={0.8}>
         <ThemedText style={styles.sectionTitle}>{item.title} ({item.data.length})</ThemedText>
-        <Ionicons name={expandedSections[item.title] ? 'chevron-down' : 'chevron-forward'} size={20} color={colorScheme === 'dark' ? '#FFFFFF' : '#000000'} />
+        <Ionicons name={sectionsOpen[item.title] ? 'chevron-down' : 'chevron-forward'} size={20} color={colorScheme === 'dark' ? '#FFFFFF' : '#000000'} />
       </TouchableOpacity>
-      {expandedSections[item.title] && (
+      {sectionsOpen[item.title] && (
         <FlatList
           data={item.data}
-          keyExtractor={(todo) => todo.id.toString()}
-          renderItem={({ item: todo }) => (
+          keyExtractor={(t) => t.id.toString()}
+          renderItem={({ item: t }) => (
             <View style={styles.taskContainer}>
-              {isEditing[todo.id] ? (
+              {editing[t.id] ? (
                 <View>
                   <TextInput
                     style={styles.input}
-                    value={editTodoText}
-                    onChangeText={setEditTodoText}
-                    placeholder="編輯任務"
+                    value={editText}
+                    onChangeText={setEditText}
+                    placeholder="編輯任務內容"
                     multiline
                   />
-                  <TouchableOpacity style={styles.dateTimeButton} onPress={() => showDatePicker(setEditDueDate, editDueDate)}>
-                    <ThemedText style={styles.dateTimeText}>截止: {editDueDate.toLocaleString()}</ThemedText>
+                  <TouchableOpacity style={styles.dateTimeButton} onPress={() => showDatePicker(setEditDate, editDate)}>
+                    <ThemedText style={styles.dateTimeText}>截止日期: {editDate.toLocaleString()}</ThemedText>
                   </TouchableOpacity>
                   <View style={styles.modalButtons}>
-                    <Button mode="contained" style={styles.addButtonStyle} onPress={() => handleUpdateTodo(todo.id)}>
+                    <Button mode="contained" style={styles.addButtonStyle} onPress={() => handleUpdate(t.id)}>
                       <ThemedText style={styles.modalButtonText}>保存</ThemedText>
                     </Button>
                     <Button mode="contained" style={styles.cancelButton} onPress={() => {
-                      setIsEditing((prev) => ({ ...prev, [todo.id]: false }));
-                      setEditTodoText(todo.todo);
-                      setEditDueDate(normalizeDate(todo.dueDate));
+                      setEditing((prev) => ({ ...prev, [t.id]: false }));
+                      setEditText(t.todo);
+                      setEditDate(normalizeDate(t.dueDate));
                     }}>
                       <ThemedText style={styles.modalButtonText}>取消</ThemedText>
                     </Button>
@@ -335,29 +347,29 @@ export default function HomeScreen() {
                 <View style={styles.taskItem}>
                   <TouchableOpacity
                     style={styles.checkboxContainer}
-                    onPress={() => handleToggleComplete(todo.id, !todo.completed)}
+                    onPress={() => handleToggle(t.id, !t.completed)}
                   >
                     <Ionicons
-                      name={todo.completed ? 'checkbox' : 'square-outline'}
+                      name={t.completed ? 'checkbox' : 'square-outline'}
                       size={20}
-                      color={todo.completed ? '#4CAF50' : colorScheme === 'dark' ? '#FFFFFF' : '#000000'}
+                      color={t.completed ? '#4CAF50' : colorScheme === 'dark' ? '#FFFFFF' : '#000000'}
                     />
                   </TouchableOpacity>
                   <View style={styles.taskContent}>
-                    <ThemedText style={[styles.todoText, todo.completed && { textDecorationLine: 'line-through', opacity: 0.5 }]}>
-                      {todo.todo}
+                    <ThemedText style={[styles.todoText, t.completed && { textDecorationLine: 'line-through', opacity: 0.5 }]}>
+                      {t.todo}
                     </ThemedText>
-                    <ThemedText style={styles.dueDate}>截止: {normalizeDate(todo.dueDate).toLocaleString()}</ThemedText>
+                    <ThemedText style={styles.dueDate}>截止日期: {normalizeDate(t.dueDate).toLocaleString()}</ThemedText>
                   </View>
                   <View style={styles.actionButtons}>
                     <TouchableOpacity style={styles.editButton} onPress={() => {
-                      setIsEditing((prev) => ({ ...prev, [todo.id]: true }));
-                      setEditTodoText(todo.todo);
-                      setEditDueDate(normalizeDate(todo.dueDate));
+                      setEditing((prev) => ({ ...prev, [t.id]: true }));
+                      setEditText(t.todo);
+                      setEditDate(normalizeDate(t.dueDate));
                     }}>
                       <Ionicons name="pencil" size={16} color="#FFFFFF" />
                     </TouchableOpacity>
-                    <TouchableOpacity style={styles.deleteButton} onPress={() => handleDeleteTodo(todo.id)}>
+                    <TouchableOpacity style={styles.deleteButton} onPress={() => handleDelete(t.id)}>
                       <Ionicons name="trash" size={16} color="#FFFFFF" />
                     </TouchableOpacity>
                   </View>
@@ -390,51 +402,51 @@ export default function HomeScreen() {
           <FlatList
             data={sections}
             keyExtractor={(item) => item.title}
-            renderItem={renderItem}
+            renderItem={renderSection}
             ListHeaderComponent={
-              errorMessage ? <ThemedText style={{ color: 'red', textAlign: 'center', padding: 8 }}>{errorMessage}</ThemedText> : null
+              errorMsg ? <ThemedText style={{ color: 'red', textAlign: 'center', padding: 8 }}>{errorMsg}</ThemedText> : null
             }
             ListFooterComponent={
-              successMessage ? <ThemedText style={{ color: 'green', textAlign: 'center', padding: 8 }}>{successMessage}</ThemedText> : null
+              successMsg ? <ThemedText style={{ color: 'green', textAlign: 'center', padding: 8 }}>{successMsg}</ThemedText> : null
             }
           />
         )}
-        {localTodos.some((todo) => todo.completed) && (
+        {tasks.some((t) => t.completed) && (
           <Button
             mode="contained"
             style={{ margin: 16, backgroundColor: '#E85D75', borderRadius: 6 }}
-            onPress={handleClearCompleted}
+            onPress={handleClear}
           >
-            <ThemedText style={{ color: '#FFFFFF' }}>清理已完成</ThemedText>
+            <ThemedText style={{ color: '#FFFFFF' }}>清理已完成任務</ThemedText>
           </Button>
         )}
-        <TouchableOpacity style={styles.addButton} onPress={() => setAddModalVisible(true)}>
+        <TouchableOpacity style={styles.addButton} onPress={() => setAddModal(true)}>
           <Ionicons name="add" size={24} color="#FFFFFF" />
         </TouchableOpacity>
-        <Modal visible={isAddModalVisible} transparent animationType="slide" onRequestClose={() => setAddModalVisible(false)}>
+        <Modal visible={addModal} transparent animationType="slide" onRequestClose={() => setAddModal(false)}>
           <View style={styles.modalContainer}>
             <ThemedView style={styles.modalContent}>
               <ThemedText type="title" style={{ fontSize: 18, marginBottom: 16 }}>新增任務</ThemedText>
-              {errorMessage && <ThemedText style={{ color: 'red', marginBottom: 8 }}>{errorMessage}</ThemedText>}
-              {successMessage && <ThemedText style={{ color: 'green', marginBottom: 8 }}>{successMessage}</ThemedText>}
+              {errorMsg && <ThemedText style={{ color: 'red', marginBottom: 8 }}>{errorMsg}</ThemedText>}
+              {successMsg && <ThemedText style={{ color: 'green', marginBottom: 8 }}>{successMsg}</ThemedText>}
               <TextInput
                 style={styles.input}
-                value={newTodoText}
-                onChangeText={setNewTodoText}
-                placeholder="輸入任務"
+                value={todoText}
+                onChangeText={setTodoText}
+                placeholder="輸入任務內容"
                 multiline
               />
-              <TouchableOpacity style={styles.dateTimeButton} onPress={() => showDatePicker(setNewDueDate, newDueDate)}>
-                <ThemedText style={styles.dateTimeText}>截止: {newDueDate.toLocaleString()}</ThemedText>
+              <TouchableOpacity style={styles.dateTimeButton} onPress={() => showDatePicker(setDueDate, dueDate)}>
+                <ThemedText style={styles.dateTimeText}>截止日期: {dueDate.toLocaleString()}</ThemedText>
               </TouchableOpacity>
               <View style={styles.modalButtons}>
-                <Button mode="contained" style={styles.addButtonStyle} onPress={handleAddTodo}>
+                <Button mode="contained" style={styles.addButtonStyle} onPress={handleAdd}>
                   <ThemedText style={styles.modalButtonText}>添加</ThemedText>
                 </Button>
                 <Button mode="contained" style={styles.cancelButton} onPress={() => {
-                  setAddModalVisible(false);
-                  setNewTodoText('');
-                  setNewDueDate(new Date());
+                  setAddModal(false);
+                  setTodoText('');
+                  setDueDate(new Date());
                 }}>
                   <ThemedText style={styles.modalButtonText}>取消</ThemedText>
                 </Button>
@@ -453,16 +465,26 @@ const styles = {
     justifyContent: 'space-between',
     alignItems: 'center',
     padding: 12,
-    backgroundColor: '#F5F7FA',
+    backgroundColor: 'transparent',
+    borderBottomWidth: 0.5,
+    borderBottomColor: '#383838',
   },
   sectionTitle: {
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '500',
+    color: '#E0E0E0',
   },
   taskContainer: {
     padding: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#dfe6e9',
+    backgroundColor: '#1E1E1E',
+    borderRadius: 8,
+    marginVertical: 4,
+    marginHorizontal: 8,
+    elevation: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 1,
   },
   taskItem: {
     flexDirection: 'row',
@@ -477,12 +499,12 @@ const styles = {
   },
   todoText: {
     fontSize: 14,
-    color: '#333333',
+    color: '#E0E0E0',
     lineHeight: 18,
   },
   dueDate: {
     fontSize: 12,
-    color: '#666666',
+    color: '#A0A0A0',
   },
   actionButtons: {
     flexDirection: 'row',
@@ -501,50 +523,47 @@ const styles = {
   },
   input: {
     borderWidth: 1,
-    borderColor: '#dfe6e9',
+    borderColor: '#333333',
     borderRadius: 8,
     padding: 10,
     marginBottom: 12,
     fontSize: 16,
-    backgroundColor: '#FFFFFF',
-    color: '#333333',
+    backgroundColor: '#2A2A2A',
+    color: '#E0E0E0',
   },
   dateTimeButton: {
     padding: 10,
-    backgroundColor: '#F5F7FA',
+    backgroundColor: '#1A1A1A',
     marginBottom: 12,
   },
   dateTimeText: {
     fontSize: 14,
-    color: '#333333',
+    color: '#E0E0E0',
   },
   addButton: {
     position: 'absolute',
-    right: 16,
+    right: 24,
+    bottom: 32,
     width: 56,
     height: 56,
     borderRadius: 28,
     backgroundColor: '#4A90E2',
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#4A90E2',
+    shadowColor: '#000000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 6,
     elevation: 6,
     zIndex: 10,
   },
-  modalContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.4)',
-  },
   modalContent: {
     width: '90%',
     padding: 20,
     borderRadius: 12,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#1E1E1E',
+    borderWidth: 0,
+    elevation: 3,
   },
   modalButtons: {
     flexDirection: 'row',
