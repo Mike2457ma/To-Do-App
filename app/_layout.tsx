@@ -11,11 +11,14 @@ import { Colors } from '../constants/Colors';
 
 const queryClient = new QueryClient();
 
+// 應用程式根佈局
 export default function RootLayout() {
+  // 載入字體
   const [loaded] = useFonts({
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
   });
 
+  // 顯示字體載入動畫
   if (!loaded) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: Colors.light.background }}>
@@ -24,22 +27,23 @@ export default function RootLayout() {
           autoPlay
           loop
           style={{ width: 200, height: 200 }}
-          accessibilityLabel="字體加載動畫"
+          accessibilityLabel="字體載入動畫"
         />
       </View>
     );
   }
 
+  // 渲染導航結構
   return (
     <QueryClientProvider client={queryClient}>
-      <ThemeProvider value={DefaultTheme}> {/* 強制使用 light 主題 */}
+      <ThemeProvider value={DefaultTheme}>
         <View style={{ flex: 1, backgroundColor: Colors.light.background }}>
           <Stack screenOptions={{ headerShown: false }}>
             <Stack.Screen name="StartScreen" options={{ headerShown: false }} />
             <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
             <Stack.Screen name="+not-found" options={{ headerShown: false }} />
           </Stack>
-          <StatusBar style="dark" /> {/* 適配 light 模式 */}
+          <StatusBar style="dark" />
         </View>
       </ThemeProvider>
     </QueryClientProvider>
